@@ -81,14 +81,18 @@ print(x_np.shape, y_np.shape)  # (样本数, 时间步=5, 特征数=2)
 print(np.sum(np.power(x_np[:,-1] - y_np, 2))/x_np.shape[0])
 # 4. 数据集划分为训练集和测试集
 from sklearn.model_selection import train_test_split
-x_train, x_test, y_train, y_test = train_test_split(x_np, y_np, test_size=0.2, shuffle=False, random_state=seed)
+# 首先将数据划分为训练集（80%）和剩余数据集（20%）
+x_train, x_rem, y_train, y_rem = train_test_split(x_np, y_np, test_size=0.2, shuffle=False, random_state=seed)
+
+# 将剩余的20%再划分为验证集和测试集（各10%）
+x_val, x_test, y_val, y_test = train_test_split(x_rem, y_rem, test_size=0.5, shuffle=False, random_state=seed)
 
 x_train = torch.as_tensor(x_train, dtype=torch.float32)
 y_train = torch.as_tensor(y_train, dtype=torch.float32)
+x_val = torch.as_tensor(x_val, dtype=torch.float32)
+y_val = torch.as_tensor(y_val, dtype=torch.float32)
 x_test = torch.as_tensor(x_test, dtype=torch.float32)
 y_test = torch.as_tensor(y_test, dtype=torch.float32)
-
-
 ## 超参数
 # layers = [1, 2, 3]
 # hidden_sizes = [10, 50, 100, 200]
@@ -157,8 +161,12 @@ for layer in layers:
 
             train_loss = loss.item()
 
+            # 验证集评估
             with torch.no_grad():
                 rnn.eval()
+                val_prediction, h_state = rnn(x_val.to(device), None)  # 在验证集上进行预测
+                val_loss = loss_func(val_prediction, y_val.to(device)).item()  # 计算验证集上的损失
+
                 test_prediction, h_state = rnn(x_test.to(device), None)  # 在测试集上进行预测
                 test_loss = loss_func(test_prediction, y_test.to(device)).item()  # 计算测试集上的损失
 
@@ -171,12 +179,13 @@ for layer in layers:
 
             if test_loss < min_test_loss:
                 min_test_loss = test_loss
-                if step+1 % 100 == 0:
-                    torch.save(rnn.state_dict(), "./min_test_loss_model.pt")
-                    print('model saved')
+                # if step + 1 % 100 == 0:
+                #     torch.save(rnn.state_dict(), "./min_test_loss_model.pt") #每次从最佳开始跑
+                #     print('model saved')
 
+            # 每1000步输出训练、验证和测试集上的损失
             if step % 1000 == 0:
-                print(f'Step: {step}, Train_Loss: {train_loss}, Test_Loss: {test_loss}')
+                print(f'Step: {step}, Train_Loss: {train_loss}, Val_Loss: {val_loss}, Test_Loss: {test_loss}')
 
         print(f'Final Minimum Train Loss: {min_train_loss}')
         print(f'Final Minimum Test Loss: {min_test_loss}')
